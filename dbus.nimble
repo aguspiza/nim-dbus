@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.0.1"
+version       = "0.1.0"
 author        = "Michał Zieliński <michal@zielinscy.org.pl>"
 description   = "dbus bindings for Nim"
 license       = "MIT"
