@@ -122,7 +122,7 @@ test "tables mixed variant":
   assert val.arrayValue[1].dictKey.asNative(string) == "b"
   assert val.arrayValue[1].dictValue.variantValue.asNative(uint32) == 12
 
-test "tables mixed variant":
+test "tables mixed variant nested":
   # TODO: make a nicer syntax for this
   var outer = DbusValue(
     kind: dtArray,
