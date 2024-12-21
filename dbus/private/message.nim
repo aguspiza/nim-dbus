@@ -32,10 +32,10 @@ proc sendMessageWithReply*(bus: Bus, msg: Message): PendingCall =
 
 # Serialization
 
-proc append(iter: ptr DbusMessageIter, x: DbusValue)
-proc append[T](iter: ptr DbusMessageIter, x: T)
+proc append*(iter: ptr DbusMessageIter, x: DbusValue)
+proc append*[T](iter: ptr DbusMessageIter, x: T)
 
-proc initIter(msg: Message): DbusMessageIter =
+proc initIter*(msg: Message): DbusMessageIter =
   dbus_message_iter_init_append(msg.msg, addr result)
 
 proc appendPtr(iter: ptr DbusMessageIter, typecode: DbusType, data: pointer) =
@@ -75,7 +75,17 @@ proc appendVariant(iter: ptr DbusMessageIter, sig: string, val: DbusValue) =
   if dbus_message_iter_close_container(iter, subIterPtr) == 0:
     raise newException(DbusException, "close_container")
 
-proc append(iter: ptr DbusMessageIter, x: DbusValue) =
+proc appendStruct(iter: ptr DbusMessageIter, arr: openarray[DbusValue]) =
+  var subIter: DbusMessageIter
+  var subIterPtr = addr subIter
+  if dbus_message_iter_open_container(iter, cint(dtStruct), nil, subIterPtr) == 0:
+    raise newException(DbusException, "open_container")
+  for item in arr:
+    subIterPtr.append(item)
+  if dbus_message_iter_close_container(iter, subIterPtr) == 0:
+    raise newException(DbusException, "close_container")
+
+proc append*(iter: ptr DbusMessageIter, x: DbusValue) =
   var myX = x
   case x.kind:
     of dbusScalarTypes:
@@ -90,11 +100,13 @@ proc append(iter: ptr DbusMessageIter, x: DbusValue) =
       iter.appendDictEntry(x.dictKey, x.dictValue)
     of dtVariant:
       iter.appendVariant(x.variantType.makeDbusSignature, x.variantValue)
+    of dtStruct:
+      iter.appendStruct(x.structValues)
     else:
       raise newException(ValueError, "not serializable")
 
 # anything convertible to DbusValue
-proc append[T](iter: ptr DbusMessageIter, x: T) =
+proc append*[T](iter: ptr DbusMessageIter, x: T) =
   iter.append(x.asDbusValue)
 
 proc append*[T](msg: Message, x: T) =

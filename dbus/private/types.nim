@@ -29,9 +29,9 @@ type DbusTypeChar* = enum
   dtByte = 'y'
   dtDict = '{'
 
-const dbusScalarTypes = {dtBool, dtDouble, dtInt32, dtInt16, dtUint16, dtUint64, dtUint32, dtInt64, dtByte}
-const dbusStringTypes = {dtString, dtObjectPath, dtSignature}
-const dbusContainerTypes = {dtArray, dtStruct, dtDict, dtDictEntry, dtVariant}
+const dbusScalarTypes* = {dtBool, dtDouble, dtInt32, dtInt16, dtUint16, dtUint64, dtUint32, dtInt64, dtByte}
+const dbusStringTypes* = {dtString, dtObjectPath, dtSignature}
+const dbusContainerTypes* = {dtArray, dtStruct, dtDict, dtDictEntry, dtVariant}
 
 type DbusType* = ref object
   case kind*: DbusTypeChar
@@ -47,32 +47,37 @@ type DbusType* = ref object
   else:
     discard
 
+proc `$`*(t: DbusType): string =
+  result.add("<DbusType " & $t.kind & " ")
+  case t.kind
+  of dtArray:
+    result.add($t.itemType)
+  of dtDictEntry:
+    result.add($t.keyType & " " & $t.valueType)
+  of dtStruct:
+    result.add($t.itemTypes)
+  of dtVariant:
+    result.add($t.variantType)
+  else:
+    discard
+  result.add(">")
+
 converter fromScalar*(ch: DbusTypeChar): DbusType =
-  new(result)
-  assert ch notin dbusContainerTypes
-  result.kind = ch
+  # assert ch notin dbusContainerTypes
+  DbusType(kind: ch)
 
 proc initArrayType*(itemType: DbusType): DbusType =
-  new(result)
-  result.kind = dtArray
-  result.itemType = itemType
+  DbusType(kind: dtArray, itemType: itemType)
 
 proc initDictEntryType*(keyType: DbusType, valueType: DbusType): DbusType =
-  doAssert keyType.kind in dbusContainerTypes
-  new(result)
-  result.kind = dtDictEntry
-  result.keyType = keyType
-  result.valueType = valueType
+  doAssert keyType.kind notin dbusContainerTypes
+  DbusType(kind: dtDictEntry, keyType: keyType, valueType: valueType)
 
 proc initStructType*(itemTypes: seq[DbusType]): DbusType =
-  new(result)
-  result.kind = dtStruct
-  result.itemTypes = itemTypes
+  DbusType(kind: dtStruct, itemTypes: itemTypes)
 
 proc initVariantType*(variantType: DbusType): DbusType =
-  new(result)
-  result.kind = dtVariant
-  result.variantType = variantType
+  DbusType(kind: dtVariant, variantType: variantType)
 
 proc parseDbusFragment(signature: string): tuple[kind: DbusType, rest: string] =
   case signature[0]:
@@ -108,6 +113,11 @@ proc makeDbusSignature*(kind: DbusType): string =
       result = "a" & makeDbusSignature(kind.itemType)
     of dtDictEntry:
       result = "{" & makeDbusSignature(kind.keyType) & makeDbusSignature(kind.valueType) & "}"
+    of dtStruct:
+      result = "("
+      for t in kind.itemTypes:
+        result.add makeDbusSignature(t)
+      result.add ")"
     else:
       result = $(kind.kind.char)
 
@@ -129,8 +139,18 @@ proc getDbusType(native: typedesc[int16]): DbusType =
 proc getDbusType(native: typedesc[cstring]): DbusType =
   dtString
 
+proc getDbusType(native: typedesc[ObjectPath]): DbusType =
+  dtObjectPath
+
+proc getAnyDbusType*[T](native: typedesc[T]): DbusType
+proc getAnyDbusType*(native: typedesc[string]): DbusType
+proc getAnyDbusType*(native: typedesc[ObjectPath]): DbusType
+proc getAnyDbusType*[T](native: typedesc[seq[T]]): DbusType
+proc getAnyDbusType*[K, V](native: typedesc[Table[K, V]]): DbusType
+proc getAnyDbusType*[K, V](native: typedesc[TableRef[K, V]]): DbusType
+
 proc getDbusType[T](native: typedesc[Variant[T]]): DbusType =
-  initVariantType(getDbusType(T))
+  initVariantType(getAnyDbusType(T))
 
 proc getAnyDbusType*[T](native: typedesc[T]): DbusType =
   getDbusType(native)
@@ -138,8 +158,16 @@ proc getAnyDbusType*[T](native: typedesc[T]): DbusType =
 proc getAnyDbusType*(native: typedesc[string]): DbusType =
   getDbusType(cstring)
 
+proc getAnyDbusType*(native: typedesc[ObjectPath]): DbusType =
+  getDbusType(ObjectPath)
+
 proc getAnyDbusType*[T](native: typedesc[seq[T]]): DbusType =
   initArrayType(getDbusType(T))
 
+proc getAnyDbusType*[K, V](native: typedesc[Table[K, V]]): DbusType =
+  initArrayType(initDictEntryType(getAnyDbusType(K), getAnyDbusType(V)))
+
 proc getAnyDbusType*[K, V](native: typedesc[TableRef[K, V]]): DbusType =
-  initStructType(getDbusType(K), getDbusType(V))
+  initArrayType(initDictEntryType(getAnyDbusType(K), getAnyDbusType(V)))
+
+
